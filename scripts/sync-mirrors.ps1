@@ -5,14 +5,13 @@
 
 .DESCRIPTION
     Creates/updates a bare mirror of RfidResearchGroup/proxmark3 and pushes every branch and tag
-    into https://github.com/<Owner>/proxmark3-mirror. The repository on your account must already
-    exist and be empty.
+    into https://github.com/<Owner>/proxmark3 (your fork). The fork must already exist.
 
 .PARAMETER Owner
     Your GitHub username (or org) that owns the mirror repositories.
 
 .PARAMETER MirrorName
-    Name of the mirror repository. Default: proxmark3-mirror.
+    Name of the fork repository. Default: proxmark3.
 
 .EXAMPLE
     ./sync-mirrors.ps1 -Owner my-github-name
@@ -20,7 +19,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)] [string] $Owner,
-    [string] $MirrorName = "proxmark3-mirror",
+    [string] $MirrorName = "proxmark3",
     [string] $UpstreamUrl = "https://github.com/RfidResearchGroup/proxmark3.git"
 )
 

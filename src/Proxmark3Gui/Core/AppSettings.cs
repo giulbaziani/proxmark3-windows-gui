@@ -103,12 +103,16 @@ namespace Proxmark3Gui.Core
     public static class Defaults
     {
         /// <summary>
-        /// Your own mirror of RfidResearchGroup/proxmark3. Change the owner here (and in
-        /// scripts/sync-mirrors.ps1) once the mirror repository exists.
+        /// GitHub owner of the Proxmark3 source the app clones from — a fork kept on this account
+        /// so installs never depend on upstream staying available. Change the owner here (and in
+        /// scripts/sync-mirrors.ps1) to point at a different fork.
         /// </summary>
-        public const string MirrorOwner = "CHANGE-ME";
+        public const string MirrorOwner = "giulbaziani";
 
-        public const string SourceRepoUrl = "https://github.com/" + MirrorOwner + "/proxmark3-mirror.git";
+        /// <summary>The fork the app clones and builds from.</summary>
+        public const string SourceRepoUrl = "https://github.com/" + MirrorOwner + "/proxmark3.git";
+
+        /// <summary>Upstream, used only if the fork above cannot be reached.</summary>
         public const string FallbackRepoUrl = "https://github.com/RfidResearchGroup/proxmark3.git";
 
         public const string UsbIpdWingetId = "dorssel.usbipd-win";

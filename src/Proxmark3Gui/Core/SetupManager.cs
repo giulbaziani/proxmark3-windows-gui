@@ -254,19 +254,41 @@ namespace Proxmark3Gui.Core
         private async Task<StepResult> StepFetchSource(Action<string> log, CancellationToken ct)
         {
             string dir = Q(_s.Pm3Dir);
-            string primary = _s.SourceRepoUrl;
             string fallback = _s.FallbackRepoUrl;
 
+            // Only use the mirror when it has actually been configured. An unconfigured mirror URL
+            // (the "CHANGE-ME" placeholder) points at a repository that does not exist, and over
+            // HTTPS git would block forever waiting for credentials — so we skip it entirely.
+            string primary = _s.SourceRepoUrl;
+            bool mirrorConfigured =
+                !string.IsNullOrWhiteSpace(primary) &&
+                primary.IndexOf("CHANGE-ME", StringComparison.OrdinalIgnoreCase) < 0 &&
+                !primary.Equals(fallback, StringComparison.OrdinalIgnoreCase);
+
+            if (mirrorConfigured)
+                log("[i] Fetching the Proxmark3 source from your mirror (upstream as fallback)...");
+            else
+                log("[i] No mirror configured — fetching the Proxmark3 source from upstream...");
+
+            // GIT_TERMINAL_PROMPT=0 makes git fail fast instead of hanging on a credential prompt,
+            // so a bad URL falls through to the next clone instead of freezing the whole setup.
+            string cloneCmd;
+            if (mirrorConfigured)
+                cloneCmd = "git clone --depth 1 " + Q(primary) + " " + dir +
+                           " || git clone --depth 1 " + Q(fallback) + " " + dir;
+            else
+                cloneCmd = "git clone --depth 1 " + Q(fallback) + " " + dir;
+
+            // A completed clone has both a .git folder and the top-level Makefile. Anything else
+            // (e.g. a clone interrupted by Stop) is treated as incomplete and wiped before retrying.
             string script =
-                "set -e; " +
-                "if [ -d " + dir + "/.git ]; then " +
-                "  cd " + dir + " && git fetch --all --tags && git reset --hard origin/HEAD 2>/dev/null || git pull --ff-only; " +
+                "export GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never GIT_ASKPASS=/bin/true; " +
+                "if [ -d " + dir + "/.git ] && [ -f " + dir + "/Makefile ]; then " +
+                "  cd " + dir + " && (git fetch --all --tags && git reset --hard origin/HEAD 2>/dev/null || git pull --ff-only); " +
                 "else " +
-                "  mkdir -p \"$(dirname " + dir + ")\"; " +
-                "  git clone --depth 1 " + Q(primary) + " " + dir + " || git clone --depth 1 " + Q(fallback) + " " + dir + "; " +
+                "  rm -rf " + dir + " && mkdir -p \"$(dirname " + dir + ")\" && " + cloneCmd + "; " +
                 "fi";
 
-            log("[i] Fetching the Proxmark3 source...");
             var r = await WslManager.RunInDistroAsync(_s, script, log, 30 * 60 * 1000, ct).ConfigureAwait(false);
             if (!r.Ok) return StepResult.Fail("git clone failed (exit code " + r.ExitCode + ").");
 
