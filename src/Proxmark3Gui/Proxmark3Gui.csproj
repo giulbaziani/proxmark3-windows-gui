@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <AssemblyName>Proxmark3Gui</AssemblyName>
+    <RootNamespace>Proxmark3Gui</RootNamespace>
+    <Product>Proxmark3 Windows GUI</Product>
+    <Company>proxmark3-windows-gui</Company>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+  </PropertyGroup>
+
+  <!--
+    Single source of truth for the version: the plain-text VERSION file at the repo root.
+    Edit that one file by hand; the build stamps it into the exe AND the app shows it in the
+    title bar (MainForm reads it back from the assembly). Fallback keeps the build working if
+    the file is ever missing.
+  -->
+  <PropertyGroup>
+    <VersionFile>$(MSBuildProjectDirectory)\..\..\VERSION</VersionFile>
+    <AppVersion Condition="Exists('$(VersionFile)')">$([System.IO.File]::ReadAllText('$(VersionFile)').Trim())</AppVersion>
+    <AppVersion Condition="'$(AppVersion)' == ''">1.0.0</AppVersion>
+    <Version>$(AppVersion)</Version>
+    <AssemblyVersion>$(AppVersion).0</AssemblyVersion>
+    <FileVersion>$(AppVersion).0</FileVersion>
+    <InformationalVersion>$(AppVersion)</InformationalVersion>
+  </PropertyGroup>
+
+  <!-- Print the version being built so it is visible in the build output. -->
+  <Target Name="ShowAppVersion" BeforeTargets="Build">
+    <Message Importance="high" Text="Proxmark3 Windows GUI — building version $(AppVersion) (from VERSION file)" />
+  </Target>
+
+  <!-- Single self-contained .exe: the user needs no .NET runtime installed. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+</Project>

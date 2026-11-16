@@ -1,0 +1,31 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'src/**', '.github/workflows/build.yml' ]
+  pull_request:
+    paths: [ 'src/**', '.github/workflows/build.yml' ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore and build
+        run: dotnet build src/Proxmark3Gui/Proxmark3Gui.csproj -c Release --nologo
+
+      - name: Publish single-file exe
+        run: dotnet publish src/Proxmark3Gui/Proxmark3Gui.csproj -c Release -o publish --nologo
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Proxmark3Gui
+          path: publish/Proxmark3Gui.exe
+          if-no-files-found: error

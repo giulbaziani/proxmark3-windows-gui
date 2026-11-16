@@ -1,0 +1,31 @@
+name: mirror-dependencies
+
+# Keeps your proxmark3-mirror repository in sync with upstream so the app never depends on an
+# upstream that could be deleted or renamed.
+#
+# Prerequisite: create an empty repo <owner>/proxmark3-mirror and add a repository secret named
+# MIRROR_TOKEN (a PAT with `repo` scope on that mirror). Then this runs weekly and on demand.
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'   # Mondays 04:00 UTC
+  workflow_dispatch:
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mirror RfidResearchGroup/proxmark3
+        env:
+          MIRROR_TOKEN: ${{ secrets.MIRROR_TOKEN }}
+          MIRROR_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -e
+          if [ -z "$MIRROR_TOKEN" ]; then
+            echo "MIRROR_TOKEN secret is not set; skipping." && exit 0
+          fi
+          git clone --mirror https://github.com/RfidResearchGroup/proxmark3.git upstream.git
+          cd upstream.git
+          git remote add mirror "https://x-access-token:${MIRROR_TOKEN}@github.com/${MIRROR_OWNER}/proxmark3-mirror.git"
+          git push --mirror mirror
+          echo "Mirror updated."

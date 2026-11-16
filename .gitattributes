@@ -1,0 +1,14 @@
+# Normalize line endings: let Git decide, keep CRLF for Windows-only files.
+* text=auto
+
+*.cs       text
+*.csproj   text
+*.sln      text
+*.md       text
+*.yml      text eol=lf
+*.ps1      text eol=crlf
+*.manifest text
+
+# Never alter published binaries.
+*.exe binary
+*.bin binary
