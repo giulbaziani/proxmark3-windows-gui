@@ -136,17 +136,23 @@ namespace Proxmark3Gui.Core
             return null;
         }
 
-        /// <summary>bind (once, persistent) + attach (per session) — both need administrator rights.</summary>
+        /// <summary>
+        /// bind (once, persistent) + attach (per session) — both need administrator rights.
+        ///
+        /// usbipd-win 4.0+ dropped the "--distribution" option: "attach --wsl" attaches the device
+        /// to the shared WSL2 virtual machine, so it becomes visible in every WSL2 distribution
+        /// (including the managed pm3-ubuntu). The distro argument is kept for API compatibility but
+        /// is no longer passed to usbipd.
+        /// </summary>
         public static async Task<RunResult> AttachAsync(string busId, string distro, Action<string> onLine,
             CancellationToken cancel = default)
         {
             await ProcessRunner.RunAsync(Exe(), new[] { "bind", "--busid", busId, "--force" }, onLine, null, 30000, cancel)
                 .ConfigureAwait(false);
 
-            var args = new List<string> { "attach", "--busid", busId, "--wsl" };
-            if (!string.IsNullOrWhiteSpace(distro)) { args.Add("--distribution"); args.Add(distro); }
+            var r = await ProcessRunner.RunAsync(Exe(),
+                new[] { "attach", "--busid", busId, "--wsl" }, onLine, null, 60000, cancel).ConfigureAwait(false);
 
-            var r = await ProcessRunner.RunAsync(Exe(), args, onLine, null, 60000, cancel).ConfigureAwait(false);
             if (!r.Ok && r.OutputContains("already attached")) r.ExitCode = 0;
             return r;
         }
@@ -177,11 +183,8 @@ namespace Proxmark3Gui.Core
                 psi.ArgumentList.Add("--busid");
                 psi.ArgumentList.Add(busId);
                 psi.ArgumentList.Add("--wsl");
-                if (!string.IsNullOrWhiteSpace(distro))
-                {
-                    psi.ArgumentList.Add("--distribution");
-                    psi.ArgumentList.Add(distro);
-                }
+                // No "--distribution": removed in usbipd 4.0+. The device is shared with the whole
+                // WSL2 VM, so pm3-ubuntu sees it regardless.
                 psi.ArgumentList.Add("--auto-attach");
 
                 var p = Process.Start(psi);

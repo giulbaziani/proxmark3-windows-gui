@@ -51,7 +51,12 @@ namespace Proxmark3Gui.Core
             "libnewlib-dev qtbase5-dev libbz2-dev liblz4-dev libbluetooth-dev libpython3-dev " +
             "libssl-dev libgd-dev xxd";
 
-        /// <summary>Proxmark3 Easy has only 256 KB of flash, so rarely used modules are skipped.</summary>
+        /// <summary>
+        /// Proxmark3 Easy has only 256 KB of flash. The full firmware is ~333 KB, so the modules
+        /// not needed for card cloning are skipped to fit. What stays: LF (EM4100/T5577) and HF
+        /// ISO14443-A (Mifare) — exactly what the clone tabs use. iClass, ISO15693, FeliCa, Legic,
+        /// Hitag, EM4x50/70, DESFire-sim, and the HF plot/sniff helpers are dropped.
+        /// </summary>
         public const string Easy256KPlatform =
             "PLATFORM=PM3GENERIC\n" +
             "PLATFORM_SIZE=256\n" +
@@ -63,7 +68,14 @@ namespace Proxmark3Gui.Core
             "SKIP_ZX8211=1\n" +
             "SKIP_LEGICRF=1\n" +
             "SKIP_FELICA=1\n" +
-            "SKIP_NFCBARCODE=1\n";
+            "SKIP_NFCBARCODE=1\n" +
+            "SKIP_ICLASS=1\n" +
+            "SKIP_SEOS=1\n" +
+            "SKIP_ISO15693=1\n" +
+            "SKIP_ISO14443b=1\n" +
+            "SKIP_DESFIRE=1\n" +
+            "SKIP_HFSNIFF=1\n" +
+            "SKIP_HFPLOT=1\n";
 
         public SetupManager(AppSettings s)
         {
@@ -292,12 +304,26 @@ namespace Proxmark3Gui.Core
             var r = await WslManager.RunInDistroAsync(_s, script, log, 30 * 60 * 1000, ct).ConfigureAwait(false);
             if (!r.Ok) return StepResult.Fail("git clone failed (exit code " + r.ExitCode + ").");
 
+            var cfg = await WritePlatformConfigAsync(log, ct).ConfigureAwait(false);
+            if (!cfg.Ok) return cfg;
+
+            return StepResult.Success("Source code ready in " + _s.Pm3Dir + ".");
+        }
+
+        /// <summary>
+        /// Writes (or removes) Makefile.platform to match the current board setting. Called from
+        /// both the source step and the build step, so the firmware is always compiled with the
+        /// right module set even if the source was cloned by an older version.
+        /// </summary>
+        private async Task<StepResult> WritePlatformConfigAsync(Action<string> log, CancellationToken ct)
+        {
+            string dir = Q(_s.Pm3Dir);
             if (_s.Easy256K)
             {
                 log("[i] Writing Makefile.platform for a 256 KB Proxmark3 Easy...");
                 string write =
                     "cat > " + dir + "/Makefile.platform << 'PM3EOF'\n" + Easy256KPlatform + "PM3EOF\n" +
-                    "cat " + dir + "/Makefile.platform";
+                    "echo '--- Makefile.platform ---'; cat " + dir + "/Makefile.platform";
                 var w = await WslManager.RunInDistroAsync(_s, write, log, 60000, ct).ConfigureAwait(false);
                 if (!w.Ok) return StepResult.Fail("Could not write Makefile.platform.");
             }
@@ -306,15 +332,21 @@ namespace Proxmark3Gui.Core
                 await WslManager.RunInDistroAsync(_s, "rm -f " + dir + "/Makefile.platform", log, 60000, ct)
                     .ConfigureAwait(false);
             }
-
-            return StepResult.Success("Source code ready in " + _s.Pm3Dir + ".");
+            return StepResult.Success();
         }
 
         private async Task<StepResult> StepBuild(Action<string> log, CancellationToken ct)
         {
             string dir = Q(_s.Pm3Dir);
+
+            // Always refresh the platform config first, so a build never uses a stale module set
+            // (e.g. one left by an earlier version that made the firmware too large for 256 KB).
+            var cfg = await WritePlatformConfigAsync(log, ct).ConfigureAwait(false);
+            if (!cfg.Ok) return cfg;
+
             log("[i] Compiling. The first build takes 5-20 minutes — the log keeps moving.");
 
+            // make clean is required after a platform change so every module is rebuilt.
             string script = "cd " + dir + " && make clean >/dev/null 2>&1; make -j\"$(nproc)\"";
             var r = await WslManager.RunInDistroAsync(_s, script, log, 90 * 60 * 1000, ct).ConfigureAwait(false);
 

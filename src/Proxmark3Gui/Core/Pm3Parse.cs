@@ -65,10 +65,55 @@ namespace Proxmark3Gui.Core
             return m.Success ? m.Groups[1].Value.Trim() : null;
         }
 
+        /// <summary>UID taken from a dump file name like "hf-mf-C787CDB4-dump-003.bin".</summary>
+        public static string UidFromDumpName(string pathOrName)
+        {
+            if (string.IsNullOrEmpty(pathOrName)) return null;
+            var m = Regex.Match(pathOrName, @"hf-mf-([0-9A-Fa-f]{8,})-", RegexOptions.IgnoreCase);
+            return m.Success ? m.Groups[1].Value.ToUpperInvariant() : null;
+        }
+
+        /// <summary>Mifare Classic variant inferred from the dump size.</summary>
+        public static string MifareTypeFromSize(long bytes)
+        {
+            switch (bytes)
+            {
+                case 320: return "Mifare Mini";
+                case 1024: return "Mifare Classic 1K";
+                case 2048: return "Mifare Classic 2K";
+                case 4096: return "Mifare Classic 4K";
+                default: return bytes > 0 ? "Mifare Classic" : null;
+            }
+        }
+
         public static string DumpFile(string output)
         {
             var m = Regex.Match(output ?? "", @"(hf-mf-[0-9A-Fa-f]+-dump(?:-\d+)?\.(?:bin|json))");
             return m.Success ? m.Groups[1].Value : null;
+        }
+
+        /// <summary>
+        /// The absolute path pm3 reports for the saved binary dump, e.g.
+        /// "[+] Saved 1024 bytes to binary file `/root/hf-mf-XXXX-dump-001.bin`".
+        /// pm3 saves into its working/home directory, which is not always where we run it, so the
+        /// reported path is the only reliable way to find the file.
+        /// </summary>
+        public static string SavedBinPath(string output)
+        {
+            var m = Regex.Match(output ?? "",
+                @"Saved\s+\d+\s+bytes\s+to\s+binary\s+file\s+`?([^`\r\n]+?\.bin)`?");
+            if (m.Success) return m.Groups[1].Value.Trim();
+
+            // Fallback: any absolute path to a *-dump*.bin mentioned in the output.
+            m = Regex.Match(output ?? "", @"(/\S+?-dump(?:-\d+)?\.bin)");
+            return m.Success ? m.Groups[1].Value.Trim() : null;
+        }
+
+        public static string SavedJsonPath(string output)
+        {
+            var m = Regex.Match(output ?? "",
+                @"Saved\s+to\s+json\s+file\s+`?([^`\r\n]+?\.json)`?");
+            return m.Success ? m.Groups[1].Value.Trim() : null;
         }
 
         public static string KeyFile(string output)

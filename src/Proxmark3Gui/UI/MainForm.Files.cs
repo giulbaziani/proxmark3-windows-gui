@@ -119,11 +119,19 @@ namespace Proxmark3Gui.UI
                 _backupList.Items.Clear();
                 foreach (var e in items)
                 {
+                    // Derive UID/type for older backups saved before these were captured.
+                    string uid = !string.IsNullOrWhiteSpace(e.Uid)
+                        ? e.Uid
+                        : Pm3Parse.UidFromDumpName(e.OriginalName ?? e.FileName);
+                    string type = !string.IsNullOrWhiteSpace(e.CardType)
+                        ? e.CardType
+                        : Pm3Parse.MifareTypeFromSize(e.SizeBytes);
+
                     var row = new ListViewItem(new[]
                     {
                         e.CreatedLocal.ToString("yyyy-MM-dd HH:mm"),
-                        string.IsNullOrWhiteSpace(e.Uid) ? "—" : e.Uid,
-                        string.IsNullOrWhiteSpace(e.CardType) ? "—" : e.CardType,
+                        string.IsNullOrWhiteSpace(uid) ? "—" : uid,
+                        string.IsNullOrWhiteSpace(type) ? "—" : type,
                         FormatSize(e.SizeBytes),
                         e.OriginalName ?? e.FileName
                     })
@@ -165,6 +173,7 @@ namespace Proxmark3Gui.UI
 
             await WithBusyAsync("Backing up", async ct =>
             {
+                if (!await EnsureDeviceAsync(ct).ConfigureAwait(true)) { SetStatus("No device.", Bad); return; }
                 var r = await Pm3.RunAsync("hf mf autopwn", Log, 15 * 60 * 1000, ct).ConfigureAwait(true);
 
                 if (Pm3Parse.PortMissing(r.Output))
@@ -173,25 +182,36 @@ namespace Proxmark3Gui.UI
                     return;
                 }
 
-                string dump = Pm3Parse.DumpFile(r.Output);
-                if (dump == null)
+                string binPath = Pm3Parse.SavedBinPath(r.Output);
+                if (binPath == null)
                 {
                     Log("[!] No dump was produced. Reposition the card and try again.");
                     SetStatus("Backup failed.", Bad);
                     return;
                 }
 
-                string uid = Pm3Parse.Uid(r.Output);
-                string type = Pm3Parse.CardType(r.Output);
-                Log("[+] Dump: " + dump + (uid != null ? "  (UID " + uid + ")" : ""));
+                // The UID is in the dump file name; the Mifare variant follows from the dump size.
+                string uid = Pm3Parse.Uid(r.Output) ?? Pm3Parse.UidFromDumpName(binPath);
+                Log("[+] Dump: " + binPath + (uid != null ? "  (UID " + uid + ")" : ""));
 
-                // Pull the dump (and its siblings) out of Linux, then store it locally with a timestamp.
-                var copied = await Pm3.ExportDumpToAsync(dump, BackupStore.Folder, Log, ct).ConfigureAwait(true);
+                // Copy the dump (and its .json sibling) out of Linux by their reported absolute paths.
+                var toCopy = new System.Collections.Generic.List<string> { binPath };
+                string jsonPath = Pm3Parse.SavedJsonPath(r.Output);
+                if (jsonPath != null) toCopy.Add(jsonPath);
+
+                var copied = await Pm3.ExportAbsoluteAsync(toCopy, BackupStore.Folder, Log, ct).ConfigureAwait(true);
                 if (copied.Count == 0)
                 {
                     Log("[!] The dump could not be copied out of Linux.");
                     SetStatus("Backup failed to copy.", Bad);
                     return;
+                }
+
+                string type = Pm3Parse.CardType(r.Output);
+                if (string.IsNullOrWhiteSpace(type))
+                {
+                    try { type = Pm3Parse.MifareTypeFromSize(new System.IO.FileInfo(copied[0]).Length); }
+                    catch { }
                 }
 
                 try

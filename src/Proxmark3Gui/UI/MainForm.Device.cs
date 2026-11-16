@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Proxmark3Gui.Core;
@@ -77,6 +78,67 @@ namespace Proxmark3Gui.UI
             });
 
             return tab;
+        }
+
+        /// <summary>
+        /// Makes sure the Proxmark3 is reachable inside Linux before a card operation. If it is not,
+        /// it auto-detects the device on usbipd and attaches it — so the user never has to visit the
+        /// Device tab manually once setup is complete. Returns false (with a logged reason) if the
+        /// device cannot be reached.
+        /// </summary>
+        internal async Task<bool> EnsureDeviceAsync(CancellationToken ct)
+        {
+            string port = await Pm3.FindSerialPortAsync(ct).ConfigureAwait(true);
+            if (port != null) return true;
+
+            if (!Elevation.IsAdministrator())
+            {
+                Log("[!] The device is not connected to Linux and admin rights are needed to attach it.");
+                return false;
+            }
+
+            if (!UsbIpdManager.IsInstalled())
+            {
+                Log("[!] usbipd-win is not installed — run setup first.");
+                return false;
+            }
+
+            Log("[i] Device not connected to Linux — detecting and attaching automatically...");
+            var pm3 = await UsbIpdManager.FindProxmarkAsync(null).ConfigureAwait(true);
+            if (pm3 == null)
+            {
+                Log("[!] No Proxmark3 found on USB. Plug it in and try again.");
+                return false;
+            }
+
+            _txtBusId.Text = pm3.BusId;
+            S.BusId = pm3.BusId;
+            S.Save();
+
+            var r = await UsbIpdManager.AttachAsync(pm3.BusId, S.Distro, Log, ct).ConfigureAwait(true);
+            if (!r.Ok)
+            {
+                Log("[!] Auto-attach failed (exit code " + r.ExitCode + ").");
+                return false;
+            }
+
+            // Give the kernel a moment to create /dev/ttyACM0 after the attach.
+            for (int i = 0; i < 6 && port == null; i++)
+            {
+                await Task.Delay(700, ct).ConfigureAwait(true);
+                port = await Pm3.FindSerialPortAsync(ct).ConfigureAwait(true);
+            }
+
+            if (port != null)
+            {
+                Log("[+] Device auto-connected as " + port + ".");
+                _deviceState.Text = "Connected — " + port;
+                _deviceState.ForeColor = Good;
+                return true;
+            }
+
+            Log("[!] Attached, but no serial port appeared. Open the Device tab and connect manually.");
+            return false;
         }
 
         private async Task DetectDevicesAsync()
@@ -191,6 +253,7 @@ namespace Proxmark3Gui.UI
         {
             await WithBusyAsync("Testing", async ct =>
             {
+                if (!await EnsureDeviceAsync(ct).ConfigureAwait(true)) { SetStatus("No device.", Bad); return; }
                 var r = await Pm3.HwVersionAsync(Log, ct).ConfigureAwait(true);
 
                 if (Pm3Parse.PortMissing(r.Output))
@@ -218,6 +281,7 @@ namespace Proxmark3Gui.UI
         {
             await WithBusyAsync("Measuring the antennas", async ct =>
             {
+                if (!await EnsureDeviceAsync(ct).ConfigureAwait(true)) { SetStatus("No device.", Bad); return; }
                 var r = await Pm3.HwTuneAsync(Log, ct).ConfigureAwait(true);
                 SetStatus(r.Ok ? "Antenna measurement done." : "Antenna measurement failed.", r.Ok ? Good : Bad);
             }).ConfigureAwait(true);
@@ -227,6 +291,7 @@ namespace Proxmark3Gui.UI
         {
             await WithBusyAsync("Reading the card", async ct =>
             {
+                if (!await EnsureDeviceAsync(ct).ConfigureAwait(true)) { SetStatus("No device.", Bad); return; }
                 var r = await Pm3.RunAsync(command, Log, 120000, ct).ConfigureAwait(true);
 
                 string uid = Pm3Parse.Uid(r.Output);

@@ -115,6 +115,43 @@ namespace Proxmark3Gui.Core
             return result;
         }
 
+        /// <summary>
+        /// Copies files named by their absolute Linux paths (as pm3 reported them) out to a Windows
+        /// folder. Returns the copied Windows paths, the first entry first.
+        /// </summary>
+        public async Task<System.Collections.Generic.List<string>> ExportAbsoluteAsync(
+            System.Collections.Generic.IEnumerable<string> linuxPaths, string destFolderWindows,
+            Action<string> onLine = null, CancellationToken ct = default)
+        {
+            var result = new System.Collections.Generic.List<string>();
+            try { System.IO.Directory.CreateDirectory(destFolderWindows); } catch { }
+
+            string wslDest = await WslManager.ToWslPathAsync(_s, destFolderWindows).ConfigureAwait(false);
+            if (string.IsNullOrEmpty(wslDest)) return result;
+
+            var paths = new System.Collections.Generic.List<string>();
+            foreach (var p in linuxPaths)
+                if (!string.IsNullOrWhiteSpace(p)) paths.Add(p);
+            if (paths.Count == 0) return result;
+
+            var sb = new System.Text.StringBuilder();
+            foreach (var p in paths)
+                sb.Append("cp -f ").Append(WslManager.ShellQuote(p)).Append(' ')
+                  .Append(WslManager.ShellQuote(wslDest)).Append("/ 2>/dev/null; ");
+            sb.Append("echo COPY_DONE");
+
+            var r = await WslManager.RunInDistroAsync(_s, sb.ToString(), onLine, 120000, ct).ConfigureAwait(false);
+            if (!r.OutputContains("COPY_DONE")) return result;
+
+            foreach (var p in paths)
+            {
+                string name = p.Substring(p.LastIndexOf('/') + 1);
+                string win = System.IO.Path.Combine(destFolderWindows, name);
+                if (System.IO.File.Exists(win) && !result.Contains(win)) result.Add(win);
+            }
+            return result;
+        }
+
         /// <summary>Copies a Windows file into the Linux working directory so pm3 can read it.</summary>
         public async Task<string> ImportFileAsync(string windowsPath, Action<string> onLine = null,
             CancellationToken ct = default)

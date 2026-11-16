@@ -74,6 +74,7 @@ namespace Proxmark3Gui.UI
 
             await WithBusyAsync("Reading the original", async ct =>
             {
+                if (!await EnsureDeviceAsync(ct).ConfigureAwait(true)) { SetStatus("No device.", Bad); return; }
                 Log("===== Reading the original (hf mf autopwn) =====");
                 var r = await Pm3.RunAsync("hf mf autopwn", Log, 15 * 60 * 1000, ct).ConfigureAwait(true);
 
@@ -84,7 +85,9 @@ namespace Proxmark3Gui.UI
                 }
 
                 _hfUid = Pm3Parse.Uid(r.Output);
-                _hfDump = Pm3Parse.DumpFile(r.Output);
+                // Use the absolute path pm3 reports — dumps land in pm3's home dir, not our cwd,
+                // so restoring by bare filename would fail to find the file.
+                _hfDump = Pm3Parse.SavedBinPath(r.Output) ?? Pm3Parse.DumpFile(r.Output);
 
                 _hfSpecialKeys.Clear();
                 foreach (var k in Pm3Parse.SectorKeys(r.Output))
@@ -124,6 +127,7 @@ namespace Proxmark3Gui.UI
 
             await WithBusyAsync("Writing the clone", async ct =>
             {
+                if (!await EnsureDeviceAsync(ct).ConfigureAwait(true)) { SetStatus("No device.", Bad); return; }
                 Log("===== Checking the target card =====");
                 var rs = await Pm3.RunAsync("hf mf info", Log, 120000, ct).ConfigureAwait(true);
                 string magic = Pm3Parse.MagicCapabilities(rs.Output);
@@ -225,6 +229,7 @@ namespace Proxmark3Gui.UI
         {
             await WithBusyAsync("Verifying", async ct =>
             {
+                if (!await EnsureDeviceAsync(ct).ConfigureAwait(true)) { SetStatus("No device.", Bad); return; }
                 var r = await Pm3.RunAsync("hf mf info", Log, 120000, ct).ConfigureAwait(true);
                 string uid = Pm3Parse.Uid(r.Output);
                 Log("[i] Card on the antenna: UID " + (uid ?? "unknown"));
@@ -306,6 +311,7 @@ namespace Proxmark3Gui.UI
 
             await WithBusyAsync("Reading the tag", async ct =>
             {
+                if (!await EnsureDeviceAsync(ct).ConfigureAwait(true)) { SetStatus("No device.", Bad); return; }
                 var r = await Pm3.RunAsync("lf search", Log, 120000, ct).ConfigureAwait(true);
 
                 if (Pm3Parse.PortMissing(r.Output))
@@ -348,6 +354,7 @@ namespace Proxmark3Gui.UI
 
             await WithBusyAsync("Writing the tag", async ct =>
             {
+                if (!await EnsureDeviceAsync(ct).ConfigureAwait(true)) { SetStatus("No device.", Bad); return; }
                 var w = await Pm3.RunAsync("lf em 410x clone --id " + id, Log, 120000, ct).ConfigureAwait(true);
                 var v = await Pm3.RunAsync("lf search", Log, 120000, ct).ConfigureAwait(true);
 
@@ -366,6 +373,7 @@ namespace Proxmark3Gui.UI
         {
             await WithBusyAsync("Detecting the chip", async ct =>
             {
+                if (!await EnsureDeviceAsync(ct).ConfigureAwait(true)) { SetStatus("No device.", Bad); return; }
                 var r = await Pm3.RunAsync("lf t55xx detect", Log, 120000, ct).ConfigureAwait(true);
                 bool ok = r.OutputContains("Chip Type") || r.OutputContains("Modulation");
                 SetStatus(ok ? "T55xx detected — the card is writable."
